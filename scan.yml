@@ -3,14 +3,10 @@ name: Internship scan
 on:
   schedule:
     - cron: "17 * * * *"   # every hour (UTC)
-  workflow_dispatch:        # adds a "Run workflow" button
+  workflow_dispatch:        # lets you press "Run workflow" manually
 
 permissions:
   contents: write
-
-concurrency:
-  group: internship-scan
-  cancel-in-progress: false
 
 jobs:
   scan:
@@ -26,15 +22,16 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Scan and notify
-        run: python main.py
+        run: python scan_once.py
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          LOCATION_FILTER: "india,remote,anywhere,bengaluru,bangalore,hyderabad,pune,mumbai,delhi,gurgaon,gurugram,noida,chennai,kolkata"
+          FIRST_RUN_LIMIT: "25"
 
-      - name: Save list of already-sent jobs
-        if: always()
+      - name: Save seen-jobs list
         run: |
           git config user.name "github-actions"
           git config user.email "actions@users.noreply.github.com"
-          git add seen.json || true
+          git add jobs.db
           git diff --cached --quiet || (git commit -m "update seen jobs" && git push)
