@@ -1,9 +1,10 @@
 """
 Internship Alert Bot (runs once per GitHub Actions schedule).
 
-Scans official career boards (Greenhouse / Lever / Ashby) of real companies for
-Data Science / AI / ML internships and sends new ones to your Telegram with an
-"Apply Now" button.
+Scans the official career boards of AI / data companies for Data Science,
+AI and ML internships and sends new ones to your Telegram with an
+"Apply Now" button.  It auto-detects which hiring platform each company uses
+(Greenhouse, Lever, Ashby, Workable, Recruitee, SmartRecruiters).
 """
 import html
 import json
@@ -18,37 +19,521 @@ import httpx
 
 # ======================= SETTINGS YOU CAN EDIT =======================
 
-# (platform, company slug, display name)
-# Slug = last part of the company's careers link, e.g. jobs.lever.co/palantir -> "palantir"
-# A wrong slug is simply skipped (shown as "Skipping" in the run log).
+# One company per line:  "Display Name: slug1, slug2"
+# The slug is the company's name inside its careers-page link, e.g.
+#   jobs.lever.co/palantir  ->  palantir
+# Give 2 guesses if you're unsure.  Companies not found are listed in the run
+# log as "NOT FOUND" and are simply skipped.  To add a company, add a line.
 COMPANIES = [
-    # Greenhouse  (boards.greenhouse.io/<slug>)
-    ("greenhouse", "anthropic", "Anthropic"),
-    ("greenhouse", "databricks", "Databricks"),
-    ("greenhouse", "scaleai", "Scale AI"),
-    ("greenhouse", "stripe", "Stripe"),
-    ("greenhouse", "airbnb", "Airbnb"),
-    ("greenhouse", "cloudflare", "Cloudflare"),
-    ("greenhouse", "datadog", "Datadog"),
-    ("greenhouse", "mongodb", "MongoDB"),
-    ("greenhouse", "gitlab", "GitLab"),
-    ("greenhouse", "figma", "Figma"),
-    ("greenhouse", "coinbase", "Coinbase"),
-    ("greenhouse", "pinterest", "Pinterest"),
-    ("greenhouse", "twilio", "Twilio"),
-    ("greenhouse", "razorpaysoftwareprivatelimited", "Razorpay"),
-    ("greenhouse", "groww", "Groww"),
-    # Lever  (jobs.lever.co/<slug>)
-    ("lever", "palantir", "Palantir"),
-    ("lever", "spotify", "Spotify"),
-    ("lever", "meesho", "Meesho"),
-    ("lever", "cred", "CRED"),
-    # Ashby  (jobs.ashbyhq.com/<slug>)
-    ("ashby", "openai", "OpenAI"),
-    ("ashby", "cohere", "Cohere"),
-    ("ashby", "notion", "Notion"),
-    ("ashby", "ramp", "Ramp"),
-    ("ashby", "snowflake", "Snowflake"),
+    # ---------- AI labs & model companies ----------
+    "Anthropic: anthropic",
+    "OpenAI: openai",
+    "Google DeepMind: deepmind",
+    "xAI: xai",
+    "Mistral AI: mistral, mistralai",
+    "Cohere: cohere",
+    "Perplexity: perplexity, perplexityai",
+    "Character.AI: character, characterai",
+    "Hugging Face: huggingface",
+    "Stability AI: stabilityai",
+    "Runway: runwayml, runway",
+    "ElevenLabs: elevenlabs",
+    "Together AI: togetherai, together",
+    "Anyscale: anyscale",
+    "Modal: modal",
+    "Replicate: replicate",
+    "Weights & Biases: wandb",
+    "Scale AI: scaleai, scale",
+    "Snorkel AI: snorkelai",
+    "Labelbox: labelbox",
+    "Adept: adept",
+    "Inflection AI: inflectionai",
+    "Reka AI: rekaai",
+    "Luma AI: lumaai",
+    "Suno: suno",
+    "Midjourney: midjourney",
+    "Black Forest Labs: blackforestlabs",
+    "Sakana AI: sakanaai",
+    # ---------- AI developer tools & vector DBs ----------
+    "Pinecone: pinecone",
+    "Weaviate: weaviate",
+    "Qdrant: qdrant",
+    "Chroma: trychroma, chroma",
+    "LangChain: langchain",
+    "LlamaIndex: llamaindex",
+    "Cursor (Anysphere): anysphere",
+    "Cognition: cognition",
+    "Replit: replit",
+    "Sourcegraph: sourcegraph",
+    "Vercel: vercel",
+    "Codeium / Windsurf: codeium",
+    "Tabnine: tabnine",
+    "Poolside: poolside",
+    "Magic: magic",
+    # ---------- Applied AI products ----------
+    "Harvey: harvey",
+    "Glean: gleanwork, glean",
+    "Writer: writer",
+    "Jasper: jasper",
+    "Abridge: abridge",
+    "Hippocratic AI: hippocraticai",
+    "Sierra: sierra",
+    "Decagon: decagon",
+    "Cresta: cresta",
+    "Moveworks: moveworks",
+    "Gong: gong",
+    "Grammarly: grammarly",
+    "Synthesia: synthesia",
+    "Descript: descript",
+    "Tome: tome",
+    "Typeface: typeface",
+    "Hebbia: hebbia",
+    "Rogo: rogo",
+    "Ironclad: ironclad",
+    "Clay: clay",
+    # ---------- Data & ML infrastructure ----------
+    "Databricks: databricks",
+    "Snowflake: snowflake",
+    "DataRobot: datarobot",
+    "H2O.ai: h2oai",
+    "Dataiku: dataiku",
+    "Domino Data Lab: dominodatalab",
+    "Hex: hex",
+    "Fivetran: fivetran",
+    "dbt Labs: dbtlabsinc, dbtlabs",
+    "Airbyte: airbyte",
+    "Datadog: datadog",
+    "Elastic: elastic",
+    "MongoDB: mongodb",
+    "Confluent: confluent",
+    "Astronomer: astronomer",
+    "Prefect: prefect",
+    "Dagster: dagsterlabs",
+    "Comet: cometml, comet",
+    "Arize AI: arizeai",
+    "Fiddler AI: fiddlerlabs",
+    "Cerebras: cerebrassystems, cerebras",
+    "SambaNova: sambanova",
+    "Groq: groq",
+    "Lambda: lambda, lambdalabs",
+    "CoreWeave: coreweave",
+    "Crusoe: crusoe",
+    "DataStax: datastax",
+    "ThoughtSpot: thoughtspot",
+    "Deepgram: deepgram",
+    "AssemblyAI: assemblyai",
+    "Zilliz: zilliz",
+    # ---------- Deep-tech / robotics / health AI ----------
+    "Palantir: palantir",
+    "Anduril: anduril",
+    "Shield AI: shieldai",
+    "Applied Intuition: appliedintuition",
+    "Nuro: nuro",
+    "Waabi: waabi",
+    "Samsara: samsara",
+    "Verkada: verkada",
+    "Tempus: tempus",
+    "Insitro: insitro",
+    "Recursion: recursionpharma, recursion",
+    "Benchling: benchling",
+    "Figure AI: figureai, figure",
+    "Skydio: skydio",
+    # ---------- Big product companies (strong ML intern programs) ----------
+    "Stripe: stripe",
+    "Airbnb: airbnb",
+    "Cloudflare: cloudflare",
+    "Figma: figma",
+    "Coinbase: coinbase",
+    "Pinterest: pinterest",
+    "Twilio: twilio",
+    "Reddit: reddit",
+    "Discord: discord",
+    "Duolingo: duolingo",
+    "Instacart: instacart",
+    "Lyft: lyft",
+    "Robinhood: robinhood",
+    "Affirm: affirm",
+    "Brex: brex",
+    "Ramp: ramp",
+    "Plaid: plaid",
+    "Notion: notion",
+    "Airtable: airtable",
+    "Dropbox: dropbox",
+    "Asana: asana",
+    "GitLab: gitlab",
+    "Okta: okta",
+    "Gusto: gusto",
+    "Carta: carta",
+    "Webflow: webflow",
+    "Spotify: spotify",
+    # ---------- India: AI & analytics companies ----------
+    "Sarvam AI: sarvam, sarvamai",
+    "Krutrim: krutrim",
+    "Observe.AI: observeai, observe",
+    "Uniphore: uniphore",
+    "Yellow.ai: yellowai, yellow",
+    "Gupshup: gupshup",
+    "Haptik: haptik",
+    "Mad Street Den: madstreetden",
+    "Wadhwani AI: wadhwaniai",
+    "Quantiphi: quantiphi",
+    "Tredence: tredence",
+    "Sigmoid: sigmoid",
+    "Tiger Analytics: tigeranalytics",
+    "LatentView: latentview",
+    "Gramener: gramener",
+    "Atlan: atlan",
+    "Hasura: hasura",
+    # ---------- India: product startups & unicorns ----------
+    "Razorpay: razorpaysoftwareprivatelimited, razorpay",
+    "Groww: groww",
+    "CRED: cred",
+    "Meesho: meesho",
+    "PhonePe: phonepe",
+    "Swiggy: swiggy",
+    "Zomato: zomato",
+    "Zepto: zepto, zeptonow",
+    "Paytm: paytm",
+    "Dream Sports: dreamsports, dream11",
+    "Freshworks: freshworks",
+    "Postman: postman",
+    "BrowserStack: browserstack",
+    "Chargebee: chargebee",
+    "Druva: druva",
+    "Sprinklr: sprinklr",
+    "CleverTap: clevertap",
+    "MoEngage: moengage",
+    "Rapido: rapido",
+    "Urban Company: urbancompany",
+    "Juspay: juspay",
+    "Cashfree: cashfree",
+    "Navi: navi",
+    "InMobi: inmobi",
+    "ShareChat: sharechat",
+    "PhysicsWallah: physicswallah",
+    "upGrad: upgrad",
+    "Unacademy: unacademy",
+    "Zeta: zeta",
+    "Slice: sliceit, slice",
+    # ---------- MORE AI / ML startups (global) ----------
+    "Surge AI: surgeai",
+    "Turing: turing",
+    "Invisible Technologies: invisibletech, invisible",
+    "Mercor: mercor",
+    "Encord: encord",
+    "V7 Labs: v7labs, v7",
+    "Roboflow: roboflow",
+    "Clarifai: clarifai",
+    "Cleanlab: cleanlab",
+    "SuperAnnotate: superannotate",
+    "Dataloop: dataloop",
+    "Humanloop: humanloop",
+    "Lightning AI: lightningai, lightning",
+    "Gretel: gretel, gretelai",
+    "Tonic.ai: tonicai, tonic",
+    "Cerebrium: cerebrium",
+    "Baseten: baseten",
+    "Fireworks AI: fireworksai, fireworks",
+    "OctoAI: octoml, octoai",
+    "Lamini: lamini",
+    "Unstructured: unstructured",
+    "Vellum: vellum",
+    "Voyage AI: voyageai",
+    "Contextual AI: contextualai",
+    "Imbue: imbue",
+    "Essential AI: essentialai",
+    "Liquid AI: liquidai",
+    "AI21 Labs: ai21, ai21labs",
+    "Aleph Alpha: alephalpha",
+    "DeepL: deepl",
+    "Photoroom: photoroom",
+    "H Company: hcompany",
+    "Wayve: wayve",
+    "Helsing: helsing",
+    "Cradle: cradle",
+    "Isomorphic Labs: isomorphiclabs",
+    "PolyAI: polyai",
+    "Speechmatics: speechmatics",
+    "Graphcore: graphcore",
+    "Faculty: faculty, facultyai",
+    "Peak AI: peakai, peak",
+    "Tractable: tractable",
+    "Onfido: onfido",
+    "Darktrace: darktrace",
+    "Featurespace: featurespace",
+    "Quantexa: quantexa",
+    "Physical Intelligence: physicalintelligence, pi",
+    "Skild AI: skildai, skild",
+    "Covariant: covariant",
+    "Gecko Robotics: geckorobotics",
+    "Aurora Innovation: aurorainnovation, aurora",
+    "Planet Labs: planet, planetlabs",
+    "Flock Safety: flocksafety",
+    "Motive: gomotive, motive",
+    "Rivian: rivian",
+    "Joby Aviation: jobyaviation, joby",
+    "C3.ai: c3iot, c3ai",
+    "Veritone: veritone",
+    "SoundHound AI: soundhound",
+    "Granola: granola",
+    "Lovable: lovable",
+    "Bolt.new (StackBlitz): stackblitz",
+    "Pika: pika, pikalabs",
+    "Genmo: genmo",
+    "Ideogram: ideogram",
+    "Krea: krea",
+    "Leonardo.Ai: leonardoai, leonardo",
+    "Canva: canva",
+    "Hume AI: hume, humeai",
+    "Cartesia: cartesia",
+    "Retell AI: retellai",
+    "Vapi: vapi",
+    "Bland AI: blandai",
+    "Parloa: parloa",
+    "Ada: ada, adasupport",
+    "Forethought: forethought",
+    "Cohere Health: coherehealth",
+    # ---------- Dev tools / data / cloud (ML-heavy teams) ----------
+    "Rippling: rippling",
+    "Linear: linear",
+    "Retool: retool",
+    "Supabase: supabase",
+    "Neon: neon",
+    "PlanetScale: planetscale",
+    "Temporal: temporal",
+    "Vanta: vanta",
+    "Drata: drata",
+    "New Relic: newrelic",
+    "PagerDuty: pagerduty",
+    "Sentry: sentry",
+    "LaunchDarkly: launchdarkly",
+    "HashiCorp: hashicorp",
+    "Cockroach Labs: cockroachlabs",
+    "Redis: redis",
+    "Neo4j: neo4j",
+    "Couchbase: couchbase",
+    "SingleStore: singlestore",
+    "Starburst: starburst",
+    "Dremio: dremio",
+    "Imply: imply",
+    "ClickHouse: clickhouse",
+    "Materialize: materialize",
+    "Amplitude: amplitude",
+    "Mixpanel: mixpanel",
+    "PostHog: posthog",
+    "Statsig: statsig",
+    "Braze: braze",
+    "Iterable: iterable",
+    "Klaviyo: klaviyo",
+    "HubSpot: hubspot",
+    "Intercom: intercom",
+    "Gainsight: gainsight",
+    "Outreach: outreach",
+    "Clari: clari",
+    "6sense: 6sense",
+    "ZoomInfo: zoominfo",
+    "Snyk: snyk",
+    "Cohesity: cohesity",
+    "Rubrik: rubrik",
+    "Nutanix: nutanix",
+    "Pure Storage: purestorage",
+    "Splunk: splunk",
+    "Sumo Logic: sumologic",
+    "Dynatrace: dynatrace",
+    "Grafana Labs: grafanalabs",
+    "Tailscale: tailscale",
+    "Fastly: fastly",
+    "DigitalOcean: digitalocean",
+    "Fly.io: flyio",
+    "Render: render",
+    "Netlify: netlify",
+    "Algolia: algolia",
+    "Contentful: contentful",
+    "Sanity: sanity",
+    "Mapbox: mapbox",
+    "Esri: esri",
+    # ---------- Consumer / marketplace / fintech with big ML teams ----------
+    "DoorDash: doordash",
+    "Flexport: flexport",
+    "Faire: faire",
+    "Roblox: roblox",
+    "Squarespace: squarespace",
+    "Etsy: etsy",
+    "Wayfair: wayfair",
+    "Peloton: peloton",
+    "Strava: strava",
+    "Whoop: whoop",
+    "Oura: oura",
+    "Calm: calm",
+    "Headspace: headspace",
+    "Coursera: coursera",
+    "Udemy: udemy",
+    "Khan Academy: khanacademy",
+    "Quizlet: quizlet",
+    "Scribd: scribd",
+    "Medium: medium",
+    "Substack: substack",
+    "Patreon: patreon",
+    "Chime: chime",
+    "SoFi: sofi",
+    "Upstart: upstart",
+    "Mercury: mercury",
+    "Navan: navan",
+    "Deel: deel",
+    "Zip: ziphq",
+    "Addepar: addepar",
+    "Betterment: betterment",
+    "Wealthfront: wealthfront",
+    "Marqeta: marqeta",
+    "Toast: toast",
+    "Nubank: nubank",
+    "Wise: wise",
+    "Monzo: monzo",
+    "Revolut: revolut",
+    "Klarna: klarna",
+    "Checkout.com: checkoutcom, checkout",
+    "Airwallex: airwallex",
+    "Zocdoc: zocdoc",
+    "Oscar Health: oscar, oscarhealth",
+    "Color Health: color",
+    "Nabla: nabla",
+    "Ambience Healthcare: ambiencehealthcare, ambience",
+    "Suki: suki",
+    "Viz.ai: vizai",
+    "Aidoc: aidoc",
+    "PathAI: pathai",
+    "Owkin: owkin",
+    "Atomwise: atomwise",
+    "Exscientia: exscientia",
+    "BenevolentAI: benevolentai",
+    "Freenome: freenome",
+    "Genesis Therapeutics: genesistherapeutics",
+    # ---------- INDIA: AI, analytics, deep-tech ----------
+    "Fractal Analytics: fractal, fractalanalytics",
+    "Mu Sigma: musigma",
+    "MathCo: mathco, themathcompany",
+    "Course5 Intelligence: course5, course5intelligence",
+    "Affine: affine",
+    "BridgeI2I: bridgei2i",
+    "Subex: subex",
+    "Netradyne: netradyne",
+    "Ather Energy: atherenergy, ather",
+    "Ola Electric: olaelectric",
+    "Skit.ai: skit, skitai",
+    "Verloop.io: verloop",
+    "Kore.ai: koreai, kore",
+    "Engati: engati",
+    "Gnani.ai: gnani, gnaniai",
+    "Convin: convin",
+    "Leena AI: leenaai, leena",
+    "CoRover: corover",
+    "Shaip: shaip",
+    "Josh Talks: joshtalks",
+    "Pocket FM: pocketfm",
+    "Kuku FM: kukufm",
+    "Innovaccer: innovaccer",
+    "Qure.ai: qureai, qure",
+    "Niramai: niramai",
+    "Tricog: tricog",
+    "SigTuple: sigtuple",
+    "Wingify: wingify",
+    "Whatfix: whatfix",
+    "Mindtickle: mindtickle",
+    "Capillary Technologies: capillary, capillarytech",
+    "Netcore Cloud: netcore",
+    "Zenoti: zenoti",
+    "Darwinbox: darwinbox",
+    "Keka: keka",
+    "Icertis: icertis",
+    "Amagi: amagi",
+    "Exotel: exotel",
+    "Ozonetel: ozonetel",
+    "LeadSquared: leadsquared",
+    "Perfios: perfios",
+    "Signzy: signzy",
+    "IDfy: idfy",
+    "HyperVerge: hyperverge",
+    "Bureau: bureau",
+    "Setu: setu",
+    "Sprinto: sprinto",
+    "Zluri: zluri",
+    "Rocketlane: rocketlane",
+    "Glance: glance",
+    "Dailyhunt: dailyhunt",
+    # ---------- INDIA: fintech ----------
+    "Pine Labs: pinelabs",
+    "BharatPe: bharatpe",
+    "Lendingkart: lendingkart",
+    "KreditBee: kreditbee",
+    "Jupiter Money: jupiter, jupitermoney",
+    "Fi Money (Epifi): epifi",
+    "Khatabook: khatabook",
+    "OkCredit: okcredit",
+    "Moneyview: moneyview",
+    "Dhan: dhan",
+    "Upstox: upstox",
+    "Zerodha: zerodha",
+    "Smallcase: smallcase",
+    "Scripbox: scripbox",
+    "INDmoney: indmoney",
+    "PB Fintech (Policybazaar): pbfintech, policybazaar",
+    "Acko: acko",
+    "Digit Insurance: godigit, digit",
+    "MobiKwik: mobikwik",
+    "Freecharge: freecharge",
+    "Open Financial: open, openfinancial",
+    "Decentro: decentro",
+    # ---------- INDIA: consumer / commerce / mobility / games ----------
+    "Cars24: cars24",
+    "Spinny: spinny",
+    "CarDekho: cardekho",
+    "Nykaa: nykaa",
+    "Lenskart: lenskart",
+    "Honasa (Mamaearth): honasa",
+    "boAt: boatlifestyle, boat",
+    "Licious: licious",
+    "FreshToHome: freshtohome",
+    "Country Delight: countrydelight",
+    "Blinkit: blinkit",
+    "Dunzo: dunzo",
+    "Shadowfax: shadowfax",
+    "Delhivery: delhivery",
+    "Ecom Express: ecomexpress",
+    "Porter: porter",
+    "BlackBuck: blackbuck",
+    "Udaan: udaan",
+    "Mensa Brands: mensabrands",
+    "OYO: oyo",
+    "MakeMyTrip: makemytrip",
+    "ixigo: ixigo",
+    "Cleartrip: cleartrip",
+    "RedBus: redbus",
+    "MPL (Mobile Premier League): mpl",
+    "Games24x7: games24x7",
+    "Nazara: nazara",
+    "Zupee: zupee",
+    "WinZO: winzo",
+    "Loco: loco",
+    "PharmEasy: pharmeasy",
+    "Practo: practo",
+    "HealthifyMe: healthifyme",
+    "Eka Care: ekacare",
+    "Cure.fit (Cult.fit): curefit, cultfit",
+    # ---------- INDIA: edtech ----------
+    "Vedantu: vedantu",
+    "BYJU'S: byjus",
+    "Eruditus: eruditus",
+    "Scaler: scaler",
+    "Newton School: newtonschool",
+    "Masai School: masaischool",
+    "Simplilearn: simplilearn",
+    "Coding Ninjas: codingninjas",
+    "Great Learning: greatlearning",
+    "Cuemath: cuemath",
+    "Testbook: testbook",
+    "Internshala: internshala",
+    "Apna: apna",
+    "Unstop: unstop",
 ]
 
 # The job title must contain one INTERN word AND one ROLE word.
@@ -67,8 +552,8 @@ LOCATION_FILTER = [
     "mumbai", "delhi", "gurgaon", "gurugram", "noida", "chennai", "kolkata",
 ]
 
-# On the very first run, send at most this many existing openings (rest saved silently).
-FIRST_RUN_LIMIT = 25
+FIRST_RUN_LIMIT = 25   # first run: send at most this many, save the rest silently
+MAX_PER_RUN = 30       # later runs: send at most this many; the rest follow next hour
 
 # =====================================================================
 
@@ -117,16 +602,106 @@ def fetch_ashby(client, slug, name):
     ]
 
 
-FETCHERS = {"greenhouse": fetch_greenhouse, "lever": fetch_lever, "ashby": fetch_ashby}
+def fetch_workable(client, slug, name):
+    r = client.get(f"https://apply.workable.com/api/v1/widget/accounts/{slug}", params={"details": "true"})
+    r.raise_for_status()
+    out = []
+    for j in r.json().get("jobs", []):
+        url = j.get("url") or j.get("shortlink") or j.get("application_url") or ""
+        loc = ", ".join(x for x in (j.get("city"), j.get("state"), j.get("country")) if x)
+        out.append({"uid": f"wk:{slug}:{j.get('shortcode') or url}", "company": name,
+                    "title": j.get("title", ""), "location": loc, "url": url})
+    return out
 
 
-def safe_fetch(client, company):
-    ats, slug, name = company
-    try:
-        return FETCHERS[ats](client, slug, name)
-    except Exception as e:
-        print(f"Skipping {name} ({ats}/{slug}): {e}")
+def fetch_recruitee(client, slug, name):
+    r = client.get(f"https://{slug}.recruitee.com/api/offers/")
+    r.raise_for_status()
+    out = []
+    for j in r.json().get("offers", []):
+        loc = j.get("location") or ", ".join(x for x in (j.get("city"), j.get("country")) if x)
+        out.append({"uid": f"rc:{slug}:{j['id']}", "company": name, "title": j.get("title", ""),
+                    "location": loc, "url": j.get("careers_url") or ""})
+    return out
+
+
+def fetch_smartrecruiters(client, slug, name):
+    r = client.get(f"https://api.smartrecruiters.com/v1/companies/{slug}/postings",
+                   params={"limit": 100, "q": "intern"})
+    r.raise_for_status()
+    out = []
+    for j in r.json().get("content", []):
+        loc = j.get("location") or {}
+        place = ", ".join(x for x in (loc.get("city"), loc.get("country")) if x)
+        if loc.get("remote"):
+            place = (place + ", Remote").strip(", ")
+        out.append({"uid": f"sr:{slug}:{j['id']}", "company": name, "title": j.get("name", ""),
+                    "location": place, "url": f"https://jobs.smartrecruiters.com/{slug}/{j['id']}"})
+    return out
+
+
+FETCHERS = {
+    "greenhouse": fetch_greenhouse,
+    "lever": fetch_lever,
+    "ashby": fetch_ashby,
+    "workable": fetch_workable,
+    "recruitee": fetch_recruitee,
+    "smartrecruiters": fetch_smartrecruiters,
+}
+
+
+def parse_companies():
+    out = []
+    for line in COMPANIES:
+        name, _, slugs = line.partition(":")
+        slug_list = [s.strip() for s in slugs.split(",") if s.strip()]
+        if name.strip() and slug_list:
+            out.append((name.strip(), slug_list))
+    return out
+
+
+RETRY_MISSING_DAYS = 7  # companies with no board found are re-checked once a week
+
+
+def safe_fetch(client, company, boards, missing):
+    """Find the company's job board (remembered after the first run) and return its openings."""
+    name, slugs = company
+    known = boards.get(name)
+    if known:
+        try:
+            return FETCHERS[known["ats"]](client, known["slug"], name)
+        except Exception:
+            pass  # board may have moved or a network blip: try to rediscover below
+    elif time.time() - missing.get(name, 0) < RETRY_MISSING_DAYS * 86400:
         return []
+    for slug in slugs:
+        for ats, fn in FETCHERS.items():
+            try:
+                jobs = fn(client, slug, name)
+            except Exception:
+                continue
+            if jobs:
+                boards[name] = {"ats": ats, "slug": slug}
+                missing.pop(name, None)
+                print(f"FOUND      {name}: {ats}/{slug} ({len(jobs)} openings)")
+                return jobs
+    if not known:
+        missing[name] = time.time()
+        print(f"NOT FOUND  {name}: no public job board found for {slugs}")
+    return []
+
+
+def load_state():
+    if not STATE_FILE.exists():
+        return None
+    data = json.loads(STATE_FILE.read_text())
+    if isinstance(data, list):  # older format
+        return {"seen": data, "boards": {}, "missing": {}}
+    return {"seen": data.get("seen", []), "boards": data.get("boards", {}), "missing": data.get("missing", {})}
+
+
+def save_state(seen, boards, missing):
+    STATE_FILE.write_text(json.dumps({"seen": sorted(seen), "boards": boards, "missing": missing}, indent=0))
 
 
 def matches(job):
@@ -174,18 +749,23 @@ def main():
     if not BOT_TOKEN or not CHAT_ID:
         sys.exit("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID. Add them in GitHub -> Settings -> Secrets.")
 
-    first_run = not STATE_FILE.exists()
-    seen = set() if first_run else set(json.loads(STATE_FILE.read_text()))
+    state = load_state()
+    first_run = state is None
+    state = state or {"seen": [], "boards": {}, "missing": {}}
+    seen, boards, missing = set(state["seen"]), state["boards"], state["missing"]
     manual = os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch"
+    companies = parse_companies()
 
-    with httpx.Client(timeout=25, follow_redirects=True, headers={"User-Agent": "internship-alert-bot/1.0"}) as client:
-        with ThreadPoolExecutor(8) as pool:
-            batches = list(pool.map(lambda c: safe_fetch(client, c), COMPANIES))
+    with httpx.Client(timeout=15, follow_redirects=True, headers={"User-Agent": "internship-alert-bot/1.0"}) as client:
+        with ThreadPoolExecutor(16) as pool:
+            batches = list(pool.map(lambda c: safe_fetch(client, c, boards, missing), companies))
+        print(f"job boards known: {len(boards)} of {len(companies)} companies")
         found = [j for b in batches for j in b if matches(j)]
         new = [j for j in found if j["uid"] not in seen]
-        to_send = new[:FIRST_RUN_LIMIT] if first_run else new
-        silent = new[len(to_send):]
-        print(f"matching={len(found)} new={len(new)} sending={len(to_send)}")
+        limit = FIRST_RUN_LIMIT if first_run else MAX_PER_RUN
+        to_send = new[:limit]
+        silent = new[limit:] if first_run else []
+        print(f"companies={len(companies)} matching={len(found)} new={len(new)} sending={len(to_send)}")
 
         if first_run:
             send(client, "✅ <b>Setup complete!</b> I check official company career pages every hour "
@@ -198,9 +778,11 @@ def main():
             for j in silent:
                 seen.add(j["uid"])
             if manual or first_run:
-                send(client, f"ℹ️ Scan finished: {len(found)} matching openings right now, {len(new)} new.")
+                left = len(new) - len(to_send) - len(silent)
+                extra = f" ({left} more coming in the next hourly runs)" if left > 0 else ""
+                send(client, f"ℹ️ Scan finished: {len(found)} matching openings right now, {len(new)} new{extra}.")
         finally:
-            STATE_FILE.write_text(json.dumps(sorted(seen), indent=0))
+            save_state(seen, boards, missing)
 
 
 if __name__ == "__main__":
