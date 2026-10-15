@@ -552,6 +552,73 @@ LOCATION_FILTER = [
     "mumbai", "delhi", "gurgaon", "gurugram", "noida", "chennai", "kolkata",
 ]
 
+# ---------- BIG COMPANIES THAT USE "WORKDAY" CAREER SITES ----------
+# Format:  "Name | host | site"   (copy host and site from the company's careers link:
+#   https://HOST.myworkdayjobs.com/en-US/SITE/... )
+# Wrong entries are just skipped and shown as "Skipping" in the run log.
+WORKDAY = [
+    "NVIDIA | nvidia.wd5 | NVIDIAExternalCareerSite",
+    "Adobe | adobe.wd5 | external_experienced",
+    "Salesforce | salesforce.wd12 | External_Career_Site",
+    "Intel | intel.wd1 | External",
+    "Dell Technologies | dell.wd1 | External",
+    "Walmart Global Tech | walmart.wd5 | WalmartExternal",
+    "Mastercard | mastercard.wd1 | CorporateCareers",
+    "Capital One | capitalone.wd12 | Capital_One",
+    "Qualcomm | qualcomm.wd5 | External",
+    "Micron | micron.wd1 | External",
+    "Wells Fargo | wf.wd1 | WellsFargoJobs",
+    "Citi | citi.wd5 | 2",
+    "PwC | pwc.wd3 | Global_Experienced_Careers",
+    "HP Inc | hp.wd5 | ExternalCareerSite",
+    "HPE | hpe.wd5 | Jobsathpe",
+    "Zoom | zoom.wd5 | Zoom",
+    "Workday | workday.wd5 | Workday",
+    "Thomson Reuters | thomsonreuters.wd5 | External_Career_Site",
+    "S&P Global | spgi.wd5 | SPGI_Careers",
+    "Moody's | moodys.wd5 | MoodysCareers",
+    "BlackRock | blackrock.wd1 | BlackRock_Professional",
+    "State Street | statestreet.wd1 | Global",
+    "Broadcom | broadcom.wd1 | External_Career",
+    "Autodesk | autodesk.wd1 | uni",
+    "Target | target.wd5 | targetcareers",
+    "Pfizer | pfizer.wd1 | PfizerCareers",
+    "Snap | snap.wd1 | snap",
+]
+
+# ---------- BIG NAMES VIA ADZUNA (TCS, Infosys, Accenture, Deloitte, Goldman...) ----------
+# These companies don't publish a public job feed, so we search India listings on
+# Adzuna (free API key needed, see guide) and keep ONLY the companies named here.
+BIG_COMPANIES = [
+    "Tata Consultancy", "TCS", "Infosys", "Wipro", "HCL", "HCLTech", "Tech Mahindra",
+    "Cognizant", "Capgemini", "Accenture", "Deloitte", "EY", "Ernst & Young", "KPMG",
+    "PwC", "PricewaterhouseCoopers", "Goldman Sachs", "JPMorgan", "J.P. Morgan",
+    "Morgan Stanley", "Citi", "Citigroup", "Barclays", "HSBC", "Standard Chartered",
+    "Deutsche Bank", "UBS", "Nomura", "American Express", "Mastercard", "Visa Inc",
+    "Bosch", "Siemens", "IBM", "Oracle", "SAP", "Microsoft", "Google", "Amazon",
+    "Intel", "Cisco", "Dell", "Adobe", "Walmart", "Flipkart", "Samsung", "LTIMindtree",
+    "Mphasis", "Hexaware", "Persistent Systems", "Zensar", "Genpact", "ZS Associates",
+    "Mu Sigma", "Fractal", "Tiger Analytics", "BCG", "Boston Consulting", "McKinsey",
+    "Bain", "BlackRock", "Wells Fargo", "Bank of America", "S&P Global",
+    "Thomson Reuters", "Nvidia", "Qualcomm", "Salesforce", "ServiceNow", "Honeywell",
+    # more big tech / FAANG-style names
+    "Meta", "Meta Platforms", "Facebook", "Apple", "Netflix", "Uber", "LinkedIn", "Tesla",
+    "PayPal", "Atlassian", "VMware", "Broadcom", "AMD", "Texas Instruments", "Micron",
+    "Synopsys", "Cadence", "Autodesk", "Workday", "Zoom", "Twilio", "Expedia", "Booking",
+    "Ericsson", "Nokia", "Philips", "GE", "General Electric", "Schneider Electric", "ABB",
+    # more Indian IT / consulting / banks / conglomerates
+    "Larsen & Toubro", "L&T", "LTI", "Tata Elxsi", "Tata Digital", "Tata 1mg", "Reliance",
+    "Jio", "Airtel", "Bharti", "HDFC", "ICICI", "Axis Bank", "Kotak", "Bajaj", "Mahindra",
+    "Coforge", "Nagarro", "EPAM", "Thoughtworks", "Publicis Sapient", "Sapient", "Virtusa",
+    "Birlasoft", "Cyient", "Sonata Software", "Happiest Minds", "Mastek", "Kellton",
+    "Mckinsey", "Kearney", "Oliver Wyman", "Alvarez", "Grant Thornton", "BDO", "Protiviti",
+    "Fidelity", "Vanguard", "Charles Schwab", "Northern Trust", "Franklin Templeton",
+    "Nasdaq", "Moody's", "Moodys", "Fitch", "Morningstar", "MSCI", "Bloomberg",
+]
+ADZUNA_QUERIES = ["data science intern", "machine learning intern", "AI intern", "AI engineer intern",
+                  "data analyst intern", "NLP intern"]
+ADZUNA_EVERY_HOURS = 6   # Adzuna is checked every 6 hours to stay inside its free limits
+
 FIRST_RUN_LIMIT = 25   # first run: send at most this many, save the rest silently
 MAX_PER_RUN = 30       # later runs: send at most this many; the rest follow next hour
 
@@ -704,6 +771,102 @@ def save_state(seen, boards, missing):
     STATE_FILE.write_text(json.dumps({"seen": sorted(seen), "boards": boards, "missing": missing}, indent=0))
 
 
+
+# ------------------- big-company sources -------------------
+WORKDAY_SEARCHES = ["machine learning intern", "data science intern", "AI intern"]
+
+
+def parse_workday():
+    out = []
+    for line in WORKDAY:
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) == 3 and all(parts):
+            out.append(tuple(parts))
+    return out
+
+
+def fetch_workday(client, name, host, site):
+    tenant = host.split(".")[0]
+    base = f"https://{host}.myworkdayjobs.com"
+    api = f"{base}/wday/cxs/{tenant}/{site}/jobs"
+    out = {}
+    for text in WORKDAY_SEARCHES:
+        for offset in (0, 20):
+            r = client.post(api, json={"appliedFacets": {}, "limit": 20, "offset": offset, "searchText": text})
+            r.raise_for_status()
+            data = r.json()
+            posts = data.get("jobPostings", [])
+            for j in posts:
+                path = j.get("externalPath", "")
+                uid = f"wd:{tenant}:{path}"
+                out[uid] = {"uid": uid, "company": name, "title": j.get("title", ""),
+                            "location": j.get("locationsText", ""), "url": f"{base}/en-US/{site}{path}"}
+            if len(posts) < 20 or offset + 20 >= data.get("total", 0):
+                break
+    return list(out.values())
+
+
+def safe_workday(client, entry):
+    name, host, site = entry
+    try:
+        return fetch_workday(client, name, host, site)
+    except Exception as e:
+        print(f"Skipping {name} (workday {host}/{site}): {e}")
+        return []
+
+
+def fetch_amazon(client):
+    out = {}
+    for q in ["machine learning intern", "data scientist intern", "applied scientist intern", "AI engineer intern"]:
+        for loc in ("India", ""):
+            r = client.get("https://www.amazon.jobs/en/search.json",
+                           params={"base_query": q, "loc_query": loc, "result_limit": 100, "sort": "recent"})
+            r.raise_for_status()
+            for j in r.json().get("jobs", []):
+                path = j.get("job_path", "")
+                uid = f"amz:{j.get('id_icims') or path}"
+                out[uid] = {"uid": uid, "company": "Amazon", "title": j.get("title", ""),
+                            "location": j.get("normalized_location") or j.get("location") or "",
+                            "url": "https://www.amazon.jobs" + path}
+    return list(out.values())
+
+
+BIG_RE = _compile(BIG_COMPANIES) if BIG_COMPANIES else None
+
+
+def fetch_adzuna(client):
+    app_id, app_key = os.getenv("ADZUNA_APP_ID"), os.getenv("ADZUNA_APP_KEY")
+    if not (app_id and app_key):
+        print("Adzuna skipped: no ADZUNA_APP_ID / ADZUNA_APP_KEY secrets set.")
+        return []
+    out = {}
+    for q in ADZUNA_QUERIES:
+        r = client.get("https://api.adzuna.com/v1/api/jobs/in/search/1",
+                       params={"app_id": app_id, "app_key": app_key, "what": q, "results_per_page": 50,
+                               "sort_by": "date", "max_days_old": 14})
+        r.raise_for_status()
+        for j in r.json().get("results", []):
+            company = (j.get("company") or {}).get("display_name", "")
+            if BIG_RE and not BIG_RE.search(company):
+                continue
+            uid = f"az:{j.get('id')}"
+            loc = (j.get("location") or {}).get("display_name", "")
+            out[uid] = {"uid": uid, "company": company, "title": j.get("title", ""),
+                        "location": f"{loc}, India".strip(", "), "url": j.get("redirect_url", ""),
+                        "source": "adzuna"}
+    return list(out.values())
+
+
+def safe_call(label, fn, *args):
+    try:
+        jobs = fn(*args)
+        print(f"{label}: {len(jobs)} openings fetched")
+        return jobs
+    except Exception as e:
+        print(f"Skipping {label}: {e}")
+        return []
+
+
 def matches(job):
     if not job["url"].startswith("http"):
         return False
@@ -741,6 +904,7 @@ def job_message(job):
         f"🆕 <b>{html.escape(job['title'])}</b>\n"
         f"🏢 {html.escape(job['company'])}\n"
         f"📍 {html.escape(job['location'] or 'Not specified')}"
+        + ("\n🔗 via Adzuna" if job.get("source") == "adzuna" else "")
     )
 
 
@@ -759,8 +923,14 @@ def main():
     with httpx.Client(timeout=15, follow_redirects=True, headers={"User-Agent": "internship-alert-bot/1.0"}) as client:
         with ThreadPoolExecutor(16) as pool:
             batches = list(pool.map(lambda c: safe_fetch(client, c, boards, missing), companies))
+            wd_batches = list(pool.map(lambda e: safe_workday(client, e), parse_workday()))
+        extra = [j for b in wd_batches for j in b]
+        extra += safe_call("Amazon", fetch_amazon, client)
+        if manual or first_run or time.gmtime().tm_hour % ADZUNA_EVERY_HOURS == 0:
+            extra += safe_call("Adzuna (big companies)", fetch_adzuna, client)
         print(f"job boards known: {len(boards)} of {len(companies)} companies")
-        found = [j for b in batches for j in b if matches(j)]
+        everything = {j["uid"]: j for j in [x for b in batches for x in b] + extra}
+        found = [j for j in everything.values() if matches(j)]
         new = [j for j in found if j["uid"] not in seen]
         limit = FIRST_RUN_LIMIT if first_run else MAX_PER_RUN
         to_send = new[:limit]
