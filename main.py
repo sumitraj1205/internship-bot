@@ -4,7 +4,8 @@ Internship Alert Bot (runs once per GitHub Actions schedule).
 Scans the official career boards of AI / data companies for Data Science,
 AI and ML internships and sends new ones to your Telegram with an
 "Apply Now" button.  It auto-detects which hiring platform each company uses
-(Greenhouse, Lever, Ashby, Workable, Recruitee, SmartRecruiters).
+(Greenhouse, Lever, Ashby, Workable, Recruitee, SmartRecruiters)
+plus Workday, Amazon and job-site APIs (Adzuna, Jooble, The Muse, Remotive, Jobicy, Arbeitnow, Remote OK).
 """
 import html
 import json
@@ -549,7 +550,7 @@ ROLE_KEYWORDS = [
 # Make it an empty list [] to receive jobs from ALL locations worldwide.
 LOCATION_FILTER = [
     "india", "remote", "anywhere", "bengaluru", "bangalore", "hyderabad", "pune",
-    "mumbai", "delhi", "gurgaon", "gurugram", "noida", "chennai", "kolkata",
+    "mumbai", "delhi", "gurgaon", "gurugram", "noida", "chennai", "kolkata", "worldwide",
 ]
 
 # ---------- BIG COMPANIES THAT USE "WORKDAY" CAREER SITES ----------
@@ -617,7 +618,9 @@ BIG_COMPANIES = [
 ]
 ADZUNA_QUERIES = ["data science intern", "machine learning intern", "AI intern", "AI engineer intern",
                   "data analyst intern", "NLP intern"]
-ADZUNA_EVERY_HOURS = 6   # Adzuna is checked every 6 hours to stay inside its free limits
+SLOW_SOURCES_EVERY_HOURS = 6   # job-site APIs (Adzuna, Jooble, Remotive...) run every 6 hours to respect their limits
+JOOBLE_QUERIES = ["data science intern", "machine learning intern", "AI intern", "AI engineer intern", "data analyst intern"]
+THE_MUSE_CATEGORIES = ["Data Science", "Data and Analytics", "Software Engineering"]
 
 FIRST_RUN_LIMIT = 25   # first run: send at most this many, save the rest silently
 MAX_PER_RUN = 30       # later runs: send at most this many; the rest follow next hour
@@ -635,6 +638,27 @@ def _compile(words):
 
 INTERN_RE = _compile(INTERN_KEYWORDS)
 ROLE_RE = _compile(ROLE_KEYWORDS)
+
+# Location matching uses whole words, so "india" does NOT match "Indianapolis".
+REMOTE_WORDS = {"remote", "anywhere", "worldwide"}
+_PLACE_WORDS = [k for k in LOCATION_FILTER if k not in REMOTE_WORDS]
+PLACE_RE = _compile(_PLACE_WORDS) if _PLACE_WORDS else None
+WANTS_REMOTE = any(k in REMOTE_WORDS for k in LOCATION_FILTER)
+REMOTE_RE = re.compile(r"remote|anywhere|worldwide|work from home", re.I)
+# "Remote in USA", "Remote - EU" etc. are NOT open to you, so they are rejected.
+REGION_ONLY_RE = re.compile(
+    r"(?<![a-z])(usa|u\.s\.a?|us|united states|canada|uk|united kingdom|europe|eu|emea|americas|latam|"
+    r"australia|germany|france|spain|netherlands|ireland|singapore|japan|brazil|mexico|poland|portugal)(?![a-z])",
+    re.I,
+)
+
+
+def location_ok(loc):
+    if not LOCATION_FILTER:
+        return True
+    if PLACE_RE and PLACE_RE.search(loc):
+        return True
+    return WANTS_REMOTE and bool(REMOTE_RE.search(loc)) and not REGION_ONLY_RE.search(loc)
 
 
 # ------------------------------ fetchers ------------------------------
@@ -853,8 +877,104 @@ def fetch_adzuna(client):
             loc = (j.get("location") or {}).get("display_name", "")
             out[uid] = {"uid": uid, "company": company, "title": j.get("title", ""),
                         "location": f"{loc}, India".strip(", "), "url": j.get("redirect_url", ""),
-                        "source": "adzuna"}
+                        "source": "Adzuna"}
     return list(out.values())
+
+
+# ------------------- more job sites (free APIs) -------------------
+def _job(uid, company, title, location, url, source):
+    return {"uid": uid, "company": company or "Unknown company", "title": title or "",
+            "location": location or "", "url": url or "", "source": source}
+
+
+def fetch_jooble(client):
+    key = os.getenv("JOOBLE_API_KEY")
+    if not key:
+        print("Jooble skipped: no JOOBLE_API_KEY secret set.")
+        return []
+    out = {}
+    for q in JOOBLE_QUERIES:
+        r = client.post(f"https://jooble.org/api/{key}", json={"keywords": q, "location": "India", "page": 1})
+        r.raise_for_status()
+        for j in r.json().get("jobs", []):
+            loc = j.get("location") or ""
+            uid = f"jb:{j.get('id') or j.get('link')}"
+            out[uid] = _job(uid, j.get("company"), j.get("title"), f"{loc}, India".strip(", "), j.get("link"), "Jooble")
+    return list(out.values())
+
+
+def fetch_muse(client):
+    out = {}
+    for page in range(3):
+        r = client.get("https://www.themuse.com/api/public/jobs",
+                       params={"level": "Internship", "category": THE_MUSE_CATEGORIES, "page": page})
+        r.raise_for_status()
+        data = r.json()
+        for j in data.get("results", []):
+            locs = ", ".join(l.get("name", "") for l in j.get("locations", [])) or "Flexible / Remote"
+            uid = f"mu:{j.get('id')}"
+            out[uid] = _job(uid, (j.get("company") or {}).get("name"), j.get("name"), locs,
+                            (j.get("refs") or {}).get("landing_page"), "The Muse")
+        if page + 1 >= data.get("page_count", 0):
+            break
+    return list(out.values())
+
+
+def fetch_remotive(client):
+    r = client.get("https://remotive.com/api/remote-jobs", params={"search": "intern", "limit": 100})
+    r.raise_for_status()
+    out = []
+    for j in r.json().get("jobs", []):
+        out.append(_job(f"rm:{j.get('id')}", j.get("company_name"), j.get("title"),
+                        j.get("candidate_required_location") or "Remote", j.get("url"), "Remotive"))
+    return out
+
+
+def fetch_jobicy(client):
+    r = client.get("https://jobicy.com/api/v2/remote-jobs", params={"count": 100, "tag": "intern"})
+    r.raise_for_status()
+    out = []
+    for j in r.json().get("jobs", []):
+        out.append(_job(f"jc:{j.get('id')}", j.get("companyName") or j.get("company"),
+                        j.get("jobTitle") or j.get("title"), j.get("jobGeo") or "Remote", j.get("url"), "Jobicy"))
+    return out
+
+
+def fetch_arbeitnow(client):
+    out = {}
+    for page in (1, 2):
+        r = client.get("https://www.arbeitnow.com/api/job-board-api", params={"page": page})
+        r.raise_for_status()
+        for j in r.json().get("data", []):
+            loc = j.get("location") or ""
+            if j.get("remote"):
+                loc = f"{loc}, Remote".strip(", ")
+            uid = f"an:{j.get('slug')}"
+            out[uid] = _job(uid, j.get("company_name"), j.get("title"), loc, j.get("url"), "Arbeitnow")
+    return list(out.values())
+
+
+def fetch_remoteok(client):
+    r = client.get("https://remoteok.com/api")
+    r.raise_for_status()
+    out = []
+    for j in r.json():
+        if not isinstance(j, dict) or "position" not in j:
+            continue  # first element is a legal notice
+        out.append(_job(f"ro:{j.get('id')}", j.get("company"), j.get("position"),
+                        j.get("location") or "Remote", j.get("url"), "Remote OK"))
+    return out
+
+
+SLOW_SOURCES = [
+    ("Adzuna (big companies)", fetch_adzuna),
+    ("Jooble", fetch_jooble),
+    ("The Muse", fetch_muse),
+    ("Remotive", fetch_remotive),
+    ("Jobicy", fetch_jobicy),
+    ("Arbeitnow", fetch_arbeitnow),
+    ("Remote OK", fetch_remoteok),
+]
 
 
 def safe_call(label, fn, *args):
@@ -872,10 +992,7 @@ def matches(job):
         return False
     if not INTERN_RE.search(job["title"]) or not ROLE_RE.search(job["title"]):
         return False
-    if LOCATION_FILTER:
-        loc = job["location"].lower()
-        return any(k in loc for k in LOCATION_FILTER)
-    return True
+    return location_ok(job["location"])
 
 
 # ------------------------------ telegram ------------------------------
@@ -904,7 +1021,7 @@ def job_message(job):
         f"🆕 <b>{html.escape(job['title'])}</b>\n"
         f"🏢 {html.escape(job['company'])}\n"
         f"📍 {html.escape(job['location'] or 'Not specified')}"
-        + ("\n🔗 via Adzuna" if job.get("source") == "adzuna" else "")
+        + (f"\n🔗 via {html.escape(job['source'])}" if job.get("source") else "")
     )
 
 
@@ -926,8 +1043,9 @@ def main():
             wd_batches = list(pool.map(lambda e: safe_workday(client, e), parse_workday()))
         extra = [j for b in wd_batches for j in b]
         extra += safe_call("Amazon", fetch_amazon, client)
-        if manual or first_run or time.gmtime().tm_hour % ADZUNA_EVERY_HOURS == 0:
-            extra += safe_call("Adzuna (big companies)", fetch_adzuna, client)
+        if manual or first_run or time.gmtime().tm_hour % SLOW_SOURCES_EVERY_HOURS == 0:
+            for label, fn in SLOW_SOURCES:
+                extra += safe_call(label, fn, client)
         print(f"job boards known: {len(boards)} of {len(companies)} companies")
         everything = {j["uid"]: j for j in [x for b in batches for x in b] + extra}
         found = [j for j in everything.values() if matches(j)]
