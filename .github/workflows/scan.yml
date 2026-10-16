@@ -29,11 +29,12 @@ jobs:
       - name: Scan and notify
         run: python main.py
         env:
-          TELEGRAM_BOT_TOKEN: 8989519158:AAFNaDshSV4p2aqAkAuwi8VqjlzSz8AitrE
-          TELEGRAM_CHAT_ID: 1937650654
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
+          JSEARCH_API_KEY: ${{ secrets.JSEARCH_API_KEY }}
 
       - name: Save list of already-sent jobs
         if: always()
