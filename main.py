@@ -5,7 +5,7 @@ Scans the official career boards of AI / data companies for Data Science,
 AI and ML internships and sends new ones to your Telegram with an
 "Apply Now" button.  It auto-detects which hiring platform each company uses
 (Greenhouse, Lever, Ashby, Workable, Recruitee, SmartRecruiters)
-plus Workday, Amazon and job-site APIs (Adzuna, Jooble, The Muse, Remotive, Jobicy, Arbeitnow, Remote OK).
+plus Workday, Amazon and job-site APIs (Adzuna, JSearch, Jooble, The Muse, Remotive, Jobicy, Arbeitnow, Remote OK).
 """
 import hashlib
 import html
@@ -619,8 +619,13 @@ BIG_COMPANIES = [
     "Fidelity", "Vanguard", "Charles Schwab", "Northern Trust", "Franklin Templeton",
     "Nasdaq", "Moody's", "Moodys", "Fitch", "Morningstar", "MSCI", "Bloomberg",
 ]
-ADZUNA_QUERIES = ["data science intern", "machine learning intern", "AI intern", "AI engineer intern",
-                  "data analyst intern", "NLP intern"]
+ADZUNA_QUERIES = ["data science intern", "machine learning intern", "AI engineer intern"]
+JSEARCH_QUERIES = ["data science intern in India", "machine learning intern in India", "AI engineer intern in India"]
+
+# MAXIMUM number of API calls per calendar month for each limited source.  When a source reaches
+# its number, the bot simply stops calling it until next month.  Lower these if your account
+# has a smaller allowance.  (Adzuna's published default is 25/minute, 250/day, 2500/month.)
+API_BUDGET_PER_MONTH = {"Adzuna": 100, "Jooble": 200, "JSearch": 150}
 SLOW_SOURCES_EVERY_HOURS = 6   # job-site APIs (Adzuna, Jooble, Remotive...) run every 6 hours to respect their limits
 JOOBLE_QUERIES = ["data science intern", "machine learning intern", "AI intern", "AI engineer intern", "data analyst intern"]
 THE_MUSE_CATEGORIES = ["Data Science", "Data and Analytics", "Software Engineering"]
@@ -867,14 +872,16 @@ def load_state():
         return None
     data = json.loads(STATE_FILE.read_text())
     if isinstance(data, list):  # older format
-        return {"seen": data, "boards": {}, "missing": {}, "watch_ready": False}
+        return {"seen": data, "boards": {}, "missing": {}, "watch_ready": False, "usage": {}}
     return {"seen": data.get("seen", []), "boards": data.get("boards", {}), "missing": data.get("missing", {}),
-            "watch_ready": data.get("watch_ready", False)}
+            "watch_ready": data.get("watch_ready", False), "usage": data.get("usage", {})}
 
 
 def save_state(seen, boards, missing, watch_ready=False):
+    month = time.strftime("%Y-%m", time.gmtime())
+    usage = {month: USAGE.get(month, {})}  # keep only the current month
     STATE_FILE.write_text(json.dumps({"seen": sorted(seen), "boards": boards, "missing": missing,
-                                      "watch_ready": watch_ready}, indent=0))
+                                      "watch_ready": watch_ready, "usage": usage}, indent=0))
 
 
 
@@ -940,6 +947,21 @@ def fetch_amazon(client):
 BIG_RE = _compile(BIG_COMPANIES) if BIG_COMPANIES else None
 
 
+USAGE = {}  # {"2026-10": {"Adzuna": 3}} - loaded from / saved to seen.json
+
+
+def budget_ok(name, calls=1):
+    """Counts one API call against the monthly budget; False means 'stop calling this source'."""
+    month = time.strftime("%Y-%m", time.gmtime())
+    used = USAGE.setdefault(month, {}).get(name, 0)
+    cap = API_BUDGET_PER_MONTH.get(name)
+    if cap is not None and used + calls > cap:
+        print(f"{name}: monthly budget of {cap} calls is used up, skipping until next month.")
+        return False
+    USAGE[month][name] = used + calls
+    return True
+
+
 def fetch_adzuna(client):
     app_id, app_key = os.getenv("ADZUNA_APP_ID"), os.getenv("ADZUNA_APP_KEY")
     if not (app_id and app_key):
@@ -947,6 +969,8 @@ def fetch_adzuna(client):
         return []
     out = {}
     for q in ADZUNA_QUERIES:
+        if not budget_ok("Adzuna"):
+            break
         r = client.get("https://api.adzuna.com/v1/api/jobs/in/search/1",
                        params={"app_id": app_id, "app_key": app_key, "what": q, "results_per_page": 50,
                                "sort_by": "date", "max_days_old": 14})
@@ -976,6 +1000,8 @@ def fetch_jooble(client):
         return []
     out = {}
     for q in JOOBLE_QUERIES:
+        if not budget_ok("Jooble"):
+            break
         r = client.post(f"https://jooble.org/api/{key}", json={"keywords": q, "location": "India", "page": 1})
         r.raise_for_status()
         for j in r.json().get("jobs", []):
@@ -1048,14 +1074,41 @@ def fetch_remoteok(client):
     return out
 
 
+def fetch_jsearch(client):
+    """JSearch (RapidAPI) searches Google-for-Jobs style listings, incl. LinkedIn / Indeed / Naukri postings."""
+    key = os.getenv("JSEARCH_API_KEY")
+    if not key:
+        print("JSearch skipped: no JSEARCH_API_KEY secret set.")
+        return []
+    out = {}
+    for q in JSEARCH_QUERIES:
+        if not budget_ok("JSearch"):
+            break
+        r = client.get("https://jsearch.p.rapidapi.com/search",
+                       params={"query": q, "page": "1", "num_pages": "1", "country": "in", "date_posted": "month"},
+                       headers={"X-RapidAPI-Key": key, "X-RapidAPI-Host": "jsearch.p.rapidapi.com"})
+        r.raise_for_status()
+        for j in r.json().get("data", []):
+            loc = ", ".join(x for x in (j.get("job_city"), j.get("job_state"), j.get("job_country")) if x)
+            if j.get("job_is_remote"):
+                loc = f"{loc}, Remote".strip(", ")
+            publisher = j.get("job_publisher") or "web"
+            uid = f"js:{j.get('job_id')}"
+            out[uid] = _job(uid, j.get("employer_name"), j.get("job_title"), loc,
+                            j.get("job_apply_link"), f"JSearch / {publisher}")
+    return list(out.values())
+
+
+# (label, function, run every N hours). Limited APIs run rarely to save their free allowance.
 SLOW_SOURCES = [
-    ("Adzuna (big companies)", fetch_adzuna),
-    ("Jooble", fetch_jooble),
-    ("The Muse", fetch_muse),
-    ("Remotive", fetch_remotive),
-    ("Jobicy", fetch_jobicy),
-    ("Arbeitnow", fetch_arbeitnow),
-    ("Remote OK", fetch_remoteok),
+    ("Adzuna (big companies)", fetch_adzuna, 24),
+    ("JSearch (LinkedIn/Indeed-style listings)", fetch_jsearch, 24),
+    ("Jooble", fetch_jooble, 12),
+    ("The Muse", fetch_muse, 6),
+    ("Remotive", fetch_remotive, 6),
+    ("Jobicy", fetch_jobicy, 6),
+    ("Arbeitnow", fetch_arbeitnow, 6),
+    ("Remote OK", fetch_remoteok, 6),
 ]
 
 
@@ -1226,8 +1279,9 @@ def main():
 
     state = load_state()
     first_run = state is None
-    state = state or {"seen": [], "boards": {}, "missing": {}, "watch_ready": False}
+    state = state or {"seen": [], "boards": {}, "missing": {}, "watch_ready": False, "usage": {}}
     watch_ready = state.get("watch_ready", False)
+    USAGE.update(state.get("usage", {}))
     seen, boards, missing = set(state["seen"]), state["boards"], state["missing"]
     manual = os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch"
     companies = parse_companies()
@@ -1238,8 +1292,8 @@ def main():
             wd_batches = list(pool.map(lambda e: safe_workday(client, e), parse_workday()))
         extra = [j for b in wd_batches for j in b]
         extra += safe_call("Amazon", fetch_amazon, client)
-        if manual or first_run or time.gmtime().tm_hour % SLOW_SOURCES_EVERY_HOURS == 0:
-            for label, fn in SLOW_SOURCES:
+        for label, fn, every in SLOW_SOURCES:
+            if manual or first_run or time.gmtime().tm_hour % every == 0:
                 extra += safe_call(label, fn, client)
         print(f"job boards known: {len(boards)} of {len(companies)} companies")
         everything = {j["uid"]: j for j in [x for b in batches for x in b] + extra}
