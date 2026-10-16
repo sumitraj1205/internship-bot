@@ -7,6 +7,7 @@ AI and ML internships and sends new ones to your Telegram with an
 (Greenhouse, Lever, Ashby, Workable, Recruitee, SmartRecruiters)
 plus Workday, Amazon and job-site APIs (Adzuna, Jooble, The Muse, Remotive, Jobicy, Arbeitnow, Remote OK).
 """
+import hashlib
 import html
 import json
 import os
@@ -14,7 +15,9 @@ import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urljoin
 
 import httpx
 
@@ -622,6 +625,83 @@ SLOW_SOURCES_EVERY_HOURS = 6   # job-site APIs (Adzuna, Jooble, Remotive...) run
 JOOBLE_QUERIES = ["data science intern", "machine learning intern", "AI intern", "AI engineer intern", "data analyst intern"]
 THE_MUSE_CATEGORIES = ["Data Science", "Data and Analytics", "Software Engineering"]
 
+# ---------- RESEARCH INTERNSHIPS: IITs, NITs, IIITs, IISc, IISERs, Science Academies ----------
+# The bot opens these official pages twice a day and alerts you when a NEW internship /
+# summer-research / fellowship notice appears.  Add or remove lines freely.
+WATCH_EVERY_HOURS = 12
+
+# Dedicated program pages (we also alert on new announcement TEXT on these pages).
+RESEARCH_PROGRAM_PAGES = [
+    ("IIT Bombay Research Internship (IRCC)", "https://www.ircc.iitb.ac.in/IRCC-Webpage/IITBInternship/"),
+    ("IIT Madras YRF", "https://yrf.iitm.ac.in/index.html"),
+    ("IIT Madras Summer Fellowship", "https://ssp.iitm.ac.in/summer-fellowship-registration"),
+    ("IIT Delhi Summer Research (SRF)", "https://academics.iitd.ac.in/srf/"),
+    ("IIT Kanpur SURGE", "https://surge.iitk.ac.in/"),
+    ("IIT Kanpur Internship Opportunities", "https://www.iitk.ac.in/doaa/opportunities-for-internship"),
+]
+
+# Institute home pages (we alert on NEW links whose text mentions internship / summer research ...).
+INSTITUTE_HOMEPAGES = [
+    # IITs
+    ("IIT Bombay", "https://www.iitb.ac.in/"), ("IIT Delhi", "https://home.iitd.ac.in/"),
+    ("IIT Madras", "https://www.iitm.ac.in/"), ("IIT Kanpur", "https://www.iitk.ac.in/"),
+    ("IIT Kharagpur", "https://www.iitkgp.ac.in/"), ("IIT Roorkee", "https://www.iitr.ac.in/"),
+    ("IIT Guwahati", "https://www.iitg.ac.in/"), ("IIT Hyderabad", "https://www.iith.ac.in/"),
+    ("IIT Gandhinagar", "https://iitgn.ac.in/"), ("IIT BHU", "https://www.iitbhu.ac.in/"),
+    ("IIT (ISM) Dhanbad", "https://www.iitism.ac.in/"), ("IIT Indore", "https://www.iiti.ac.in/"),
+    ("IIT Bhubaneswar", "https://www.iitbbs.ac.in/"), ("IIT Jodhpur", "https://iitj.ac.in/"),
+    ("IIT Patna", "https://www.iitp.ac.in/"), ("IIT Ropar", "https://www.iitrpr.ac.in/"),
+    ("IIT Mandi", "https://www.iitmandi.ac.in/"), ("IIT Tirupati", "https://www.iittp.ac.in/"),
+    ("IIT Palakkad", "https://iitpkd.ac.in/"), ("IIT Goa", "https://www.iitgoa.ac.in/"),
+    ("IIT Dharwad", "https://www.iitdh.ac.in/"), ("IIT Jammu", "https://www.iitjammu.ac.in/"),
+    ("IIT Bhilai", "https://www.iitbhilai.ac.in/"),
+    # NITs
+    ("NIT Trichy", "https://www.nitt.edu/"), ("NIT Surathkal", "https://www.nitk.ac.in/"),
+    ("NIT Warangal", "https://www.nitw.ac.in/"), ("NIT Rourkela", "https://www.nitrkl.ac.in/"),
+    ("MNIT Jaipur", "https://www.mnit.ac.in/"), ("NIT Calicut", "https://nitc.ac.in/"),
+    ("NIT Durgapur", "https://nitdgp.ac.in/"), ("NIT Jamshedpur", "https://www.nitjsr.ac.in/"),
+    ("NIT Kurukshetra", "https://nitkkr.ac.in/"), ("NIT Srinagar", "https://nitsri.ac.in/"),
+    ("MANIT Bhopal", "https://www.manit.ac.in/"), ("SVNIT Surat", "https://www.svnit.ac.in/"),
+    ("NIT Raipur", "https://www.nitrr.ac.in/"), ("NIT Patna", "https://www.nitp.ac.in/"),
+    ("NIT Silchar", "https://www.nits.ac.in/"), ("MNNIT Allahabad", "https://www.mnnit.ac.in/"),
+    ("VNIT Nagpur", "https://vnit.ac.in/"), ("NIT Hamirpur", "https://nith.ac.in/"),
+    ("NIT Goa", "https://www.nitgoa.ac.in/"),
+    # IIITs
+    ("IIIT Hyderabad", "https://www.iiit.ac.in/"), ("IIIT Delhi", "https://www.iiitd.ac.in/"),
+    ("IIIT Bangalore", "https://www.iiitb.ac.in/"), ("IIIT Allahabad", "https://www.iiita.ac.in/"),
+    ("IIITM Gwalior", "https://www.iiitm.ac.in/"), ("IIITDM Kancheepuram", "https://www.iiitdm.ac.in/"),
+    ("IIIT Guwahati", "https://www.iiitg.ac.in/"), ("IIIT Kota", "https://iiitkota.ac.in/"),
+    ("IIIT Lucknow", "https://iiitl.ac.in/"), ("IIIT Vadodara", "https://iiitvadodara.ac.in/"),
+    ("IIIT Sri City", "https://www.iiits.ac.in/"), ("IIIT Pune", "https://www.iiitp.ac.in/"),
+    ("IIIT Nagpur", "https://iiitn.ac.in/"), ("IIIT Naya Raipur", "https://www.iiitnr.ac.in/"),
+    # Other research institutes and national programs
+    ("IISc Bangalore", "https://iisc.ac.in/"), ("IISER Pune", "https://www.iiserpune.ac.in/"),
+    ("IISER Bhopal", "https://www.iiserb.ac.in/"), ("IISER Kolkata", "https://www.iiserkol.ac.in/"),
+    ("IISER Mohali", "https://www.iisermohali.ac.in/"), ("IISER Tirupati", "https://www.iisertirupati.ac.in/"),
+    ("IISER Thiruvananthapuram", "https://www.iisertvm.ac.in/"), ("JNCASR", "https://www.jncasr.ac.in/"),
+    ("TIFR", "https://www.tifr.res.in/"), ("ISI Kolkata", "https://www.isical.ac.in/"),
+    ("Indian Academy of Sciences (SRFP)", "https://www.ias.ac.in/"),
+    ("INSA (SRFP)", "https://insaindia.res.in/"), ("NASI (SRFP)", "https://www.nasi.org.in/"),
+    ("DRDO", "https://www.drdo.gov.in/"), ("ISRO", "https://www.isro.gov.in/"),
+]
+
+# Words that make a link / sentence count as a research-internship notice.
+RESEARCH_TOPIC_WORDS = [
+    "intern", "interns", "internship", "internships", "summer research", "summer fellowship",
+    "summer internship", "winter internship", "winter research", "research internship",
+    "summer program", "summer programme", "summer school", "surge", "srip", "srfp",
+    "visiting student", "non-degree student", "research fellowship", "undergraduate research",
+]
+RESEARCH_EXCLUDE_WORDS = [
+    "phd", "ph.d", "post-doctoral", "postdoctoral", "postdoc", "faculty", "tender", "recruitment",
+    "m.tech", "mba", "jrf", "project associate", "walk-in", "quotation", "empanelment",
+]
+RESEARCH_ACTION_WORDS = [
+    "apply", "application", "applications", "open", "opens", "opened", "deadline", "last date",
+    "call for", "invited", "invites", "invitation", "registration", "register", "extended", "announce",
+    "announced", "notification", "schedule",
+]
+
 FIRST_RUN_LIMIT = 25   # first run: send at most this many, save the rest silently
 MAX_PER_RUN = 30       # later runs: send at most this many; the rest follow next hour
 
@@ -787,12 +867,14 @@ def load_state():
         return None
     data = json.loads(STATE_FILE.read_text())
     if isinstance(data, list):  # older format
-        return {"seen": data, "boards": {}, "missing": {}}
-    return {"seen": data.get("seen", []), "boards": data.get("boards", {}), "missing": data.get("missing", {})}
+        return {"seen": data, "boards": {}, "missing": {}, "watch_ready": False}
+    return {"seen": data.get("seen", []), "boards": data.get("boards", {}), "missing": data.get("missing", {}),
+            "watch_ready": data.get("watch_ready", False)}
 
 
-def save_state(seen, boards, missing):
-    STATE_FILE.write_text(json.dumps({"seen": sorted(seen), "boards": boards, "missing": missing}, indent=0))
+def save_state(seen, boards, missing, watch_ready=False):
+    STATE_FILE.write_text(json.dumps({"seen": sorted(seen), "boards": boards, "missing": missing,
+                                      "watch_ready": watch_ready}, indent=0))
 
 
 
@@ -977,6 +1059,115 @@ SLOW_SOURCES = [
 ]
 
 
+# ------------------- research internship pages (IIT / NIT / IIIT ...) -------------------
+RESEARCH_TOPIC_RE = _compile(RESEARCH_TOPIC_WORDS)
+RESEARCH_EXCLUDE_RE = _compile(RESEARCH_EXCLUDE_WORDS)
+RESEARCH_ACTION_RE = _compile(RESEARCH_ACTION_WORDS)
+CURRENT_CALL_RE = re.compile(r"2027|2026\s*[-\u2013/]\s*(20)?27|2027\s*[-\u2013/]\s*(20)?28")
+_BLOCK_TAGS = {"p", "div", "li", "tr", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6", "section",
+               "article", "br", "ul", "ol", "table", "header", "footer", "nav", "marquee"}
+
+
+class _PageParser(HTMLParser):
+    """Collects links and readable text lines from an HTML page."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.links, self.lines = [], []
+        self._href = self._title = None
+        self._atext, self._buf, self._skip = [], [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "noscript"):
+            self._skip += 1
+        if tag == "a":
+            d = dict(attrs)
+            self._href, self._title, self._atext = d.get("href"), d.get("title"), []
+        if tag in _BLOCK_TAGS:
+            self._flush()
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "noscript"):
+            self._skip = max(0, self._skip - 1)
+        if tag == "a" and self._href is not None:
+            text = " ".join("".join(self._atext).split()) or (self._title or "")
+            self.links.append((self._href, text.strip()))
+            self._href = None
+        if tag in _BLOCK_TAGS:
+            self._flush()
+
+    def handle_data(self, data):
+        if self._skip:
+            return
+        self._buf.append(data)
+        if self._href is not None:
+            self._atext.append(data)
+
+    def _flush(self):
+        text = " ".join("".join(self._buf).split())
+        self._buf = []
+        if 20 <= len(text) <= 300:
+            self.lines.append(text)
+
+
+def _hash(*parts):
+    return hashlib.md5("|".join(parts).encode("utf-8", "ignore")).hexdigest()[:16]
+
+
+def _research_job(uid, org, title, url):
+    return {"uid": uid, "company": org, "title": title[:200], "location": "India - research internship",
+            "url": url, "source": "Official institute page", "research": True}
+
+
+def scan_research_page(client, org, url, program):
+    r = client.get(url)
+    r.raise_for_status()
+    page = _PageParser()
+    page.feed(r.text)
+    page.close()
+    page._flush()
+    link_texts = {t for _, t in page.links}
+    jobs, seen_hrefs = [], set()
+    for href, text in page.links:
+        if not href or href.startswith(("#", "javascript:", "mailto:", "tel:")):
+            continue
+        full = urljoin(str(r.url), href.strip())
+        blob = f"{text} {full}"
+        if full in seen_hrefs or not RESEARCH_TOPIC_RE.search(blob) or RESEARCH_EXCLUDE_RE.search(blob):
+            continue
+        seen_hrefs.add(full)
+        label = text if len(text) >= 6 else full.rsplit("/", 1)[-1].replace("-", " ").replace("_", " ")
+        jobs.append(_research_job("rs:" + _hash(full), org, label, full))
+    if program:  # also watch announcement sentences on dedicated program pages
+        for line in page.lines:
+            if line in link_texts:
+                continue  # already covered as a link
+            if (RESEARCH_TOPIC_RE.search(line) and RESEARCH_ACTION_RE.search(line)
+                    and not RESEARCH_EXCLUDE_RE.search(line)):
+                jobs.append(_research_job("rl:" + _hash(url, line), org, line, url))
+    return jobs[:20]
+
+
+def fetch_research(client):
+    """Returns (jobs, pages_reached). Uses its own client: Indian institute sites often have broken SSL."""
+    targets = [(n, u, True) for n, u in RESEARCH_PROGRAM_PAGES] + [(n, u, False) for n, u in INSTITUTE_HOMEPAGES]
+
+    def one(t):
+        org, url, program = t
+        try:
+            return scan_research_page(client, org, url, program), True
+        except Exception as e:
+            print(f"Skipping research page {org}: {str(e)[:90]}")
+            return [], False
+
+    with ThreadPoolExecutor(16) as pool:
+        results = list(pool.map(one, targets))
+    jobs = [j for r, _ in results for j in r]
+    reached = sum(1 for _, ok in results if ok)
+    print(f"Research pages: {reached} of {len(targets)} reachable, {len(jobs)} candidate notices")
+    return jobs, reached
+
+
 def safe_call(label, fn, *args):
     try:
         jobs = fn(*args)
@@ -996,14 +1187,16 @@ def matches(job):
 
 
 # ------------------------------ telegram ------------------------------
-def send(client, text, apply_url=None):
+def send(client, text, apply_url=None, keyboard=None):
     payload = {
         "chat_id": CHAT_ID,
         "text": text,
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
     }
-    if apply_url:
+    if keyboard:
+        payload["reply_markup"] = {"inline_keyboard": keyboard}
+    elif apply_url:
         payload["reply_markup"] = {"inline_keyboard": [[{"text": "🚀 Apply Now", "url": apply_url}]]}
     for _ in range(3):
         r = client.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json=payload)
@@ -1017,8 +1210,9 @@ def send(client, text, apply_url=None):
 
 
 def job_message(job):
+    icon = "🎓" if job.get("research") else "🆕"
     return (
-        f"🆕 <b>{html.escape(job['title'])}</b>\n"
+        f"{icon} <b>{html.escape(job['title'])}</b>\n"
         f"🏢 {html.escape(job['company'])}\n"
         f"📍 {html.escape(job['location'] or 'Not specified')}"
         + (f"\n🔗 via {html.escape(job['source'])}" if job.get("source") else "")
@@ -1032,7 +1226,8 @@ def main():
 
     state = load_state()
     first_run = state is None
-    state = state or {"seen": [], "boards": {}, "missing": {}}
+    state = state or {"seen": [], "boards": {}, "missing": {}, "watch_ready": False}
+    watch_ready = state.get("watch_ready", False)
     seen, boards, missing = set(state["seen"]), state["boards"], state["missing"]
     manual = os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch"
     companies = parse_companies()
@@ -1049,6 +1244,25 @@ def main():
         print(f"job boards known: {len(boards)} of {len(companies)} companies")
         everything = {j["uid"]: j for j in [x for b in batches for x in b] + extra}
         found = [j for j in everything.values() if matches(j)]
+
+        # Research internships at IITs / NITs / IIITs (checked twice a day)
+        intro_buttons = []
+        if manual or first_run or not watch_ready or time.gmtime().tm_hour % WATCH_EVERY_HOURS == 0:
+            try:
+                with httpx.Client(timeout=20, follow_redirects=True, verify=False,
+                                  headers={"User-Agent": "Mozilla/5.0 (compatible; internship-alert-bot/1.0)"}) as rclient:
+                    research, reached = fetch_research(rclient)
+            except Exception as e:
+                print(f"Skipping research pages: {e}")
+                research, reached = [], 0
+            if reached and not watch_ready:
+                # First time: remember the old notices silently, but still send ones about the 2027 cycle.
+                for j in research:
+                    if not CURRENT_CALL_RE.search(f"{j['title']} {j['url']}"):
+                        seen.add(j["uid"])
+                watch_ready = True
+                intro_buttons = [[{"text": n[:40], "url": u}] for n, u in RESEARCH_PROGRAM_PAGES]
+            found += [j for j in research if j["uid"] not in {x["uid"] for x in found}]
         new = [j for j in found if j["uid"] not in seen]
         limit = FIRST_RUN_LIMIT if first_run else MAX_PER_RUN
         to_send = new[:limit]
@@ -1058,6 +1272,10 @@ def main():
         if first_run:
             send(client, "✅ <b>Setup complete!</b> I check official company career pages every hour "
                          "and will message you new Data Science / AI internships here.")
+        if intro_buttons:
+            send(client, "🎓 <b>Research internships:</b> I now also watch IIT, NIT, IIIT, IISc and Science "
+                         "Academies pages twice a day and will alert you to new internship / summer-research "
+                         "notices. Main program pages:", keyboard=intro_buttons)
         try:
             for j in to_send:
                 send(client, job_message(j), j["url"])
@@ -1070,7 +1288,7 @@ def main():
                 extra = f" ({left} more coming in the next hourly runs)" if left > 0 else ""
                 send(client, f"ℹ️ Scan finished: {len(found)} matching openings right now, {len(new)} new{extra}.")
         finally:
-            save_state(seen, boards, missing)
+            save_state(seen, boards, missing, watch_ready)
 
 
 if __name__ == "__main__":
