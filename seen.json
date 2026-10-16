@@ -24,6 +24,7 @@
 "rs:2b3f420d68c831c7",
 "rs:2faef5b61bcb7858",
 "rs:39bd3917d277b7db",
+"rs:409a2e86964a18c0",
 "rs:40b14386e586a1ac",
 "rs:40c9f78013cc92c6",
 "rs:423cf714e8f4eeb4",
@@ -83,6 +84,7 @@
 "rs:cc89bf8c50201518",
 "rs:ccbad5f06641ea32",
 "rs:cd3e702860f7e1a2",
+"rs:d110c678bd4bc20b",
 "rs:d5745d34eb0c1a44",
 "rs:d597acec840c9750",
 "rs:d5a8e61f547836bd",
@@ -101,6 +103,7 @@
 "rs:f11e572a865be328",
 "rs:f492dddfd42cf47f",
 "rs:fd0b0861a9dce6d6",
+"rs:fefa1b2ba201aaf0",
 "wd:nvidia:/job/India-Bengaluru/PhD-Intern--AI-ML-in-Wireless-L1-L2---Fall-2026_JR2024423"
 ],
 "boards": {
@@ -1342,5 +1345,12 @@
 "Simplilearn": 1791971942.5985572,
 "Cure.fit (Cult.fit)": 1791971942.9127383
 },
-"watch_ready": true
+"watch_ready": true,
+"usage": {
+"2026-10": {
+"Adzuna": 1,
+"JSearch": 1,
+"Jooble": 5
+}
+}
 }
