@@ -18,6 +18,7 @@
 "rs:1587e57ad444b6da",
 "rs:15904b1319a53321",
 "rs:2305c25042abd323",
+"rs:28d371daabfd3904",
 "rs:299eb7d5de3a5675",
 "rs:2a6546647fe8332d",
 "rs:2aa847626481d744",
@@ -51,11 +52,13 @@
 "rs:8a3f58db1d6456e3",
 "rs:8b07516cdca7d62b",
 "rs:8b66095631c5940a",
+"rs:90c377313f60d02e",
 "rs:910305aa3efe9d4c",
 "rs:912036f98096c812",
 "rs:93e28daf65dd1683",
 "rs:943f245e450a6532",
 "rs:948c00325b5267e3",
+"rs:94d458fe5554898b",
 "rs:9599be3119a40289",
 "rs:975d42245a567864",
 "rs:9ab1481095905654",
@@ -64,6 +67,7 @@
 "rs:a40505821eb801e0",
 "rs:a467843ece986623",
 "rs:a7540e17d46108e5",
+"rs:a78914c21368d3f7",
 "rs:ab264f2e6b84e6b5",
 "rs:ae24f45044e82a16",
 "rs:af8698d2ca98efd8",
@@ -88,6 +92,7 @@
 "rs:d5745d34eb0c1a44",
 "rs:d597acec840c9750",
 "rs:d5a8e61f547836bd",
+"rs:d63b72b39cafc426",
 "rs:d6a4a005382177d8",
 "rs:d910bc6629a27f73",
 "rs:da612d4da9c30e9b",
@@ -1348,9 +1353,9 @@
 "watch_ready": true,
 "usage": {
 "2026-10": {
-"Adzuna": 1,
-"JSearch": 1,
-"Jooble": 5
+"Adzuna": 2,
+"JSearch": 2,
+"Jooble": 10
 }
 }
 }
