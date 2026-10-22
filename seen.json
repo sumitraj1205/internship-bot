@@ -1,5 +1,6 @@
 {
 "seen": [
+"az:5935550291",
 "gh:cresta:5213417008",
 "gh:upstart:8213476",
 "rl:4053ae0c31c2ef60",
@@ -1353,9 +1354,9 @@
 "watch_ready": true,
 "usage": {
 "2026-10": {
-"Adzuna": 2,
-"JSearch": 2,
-"Jooble": 10
+"Adzuna": 5,
+"JSearch": 3,
+"Jooble": 15
 }
 }
 }
