@@ -1,6 +1,7 @@
 {
 "seen": [
 "az:5935550291",
+"az:5939427947",
 "gh:cresta:5213417008",
 "gh:upstart:8213476",
 "rl:4053ae0c31c2ef60",
@@ -33,6 +34,7 @@
 "rs:454b4ccdd32785bb",
 "rs:47cc53f2e49d7cf4",
 "rs:4b1d4bbd367b5815",
+"rs:4da26e159196c42c",
 "rs:50a405ebfbe67179",
 "rs:536f347415b9c2e7",
 "rs:59f70f268523f40c",
@@ -1354,9 +1356,9 @@
 "watch_ready": true,
 "usage": {
 "2026-10": {
-"Adzuna": 5,
-"JSearch": 3,
-"Jooble": 15
+"Adzuna": 8,
+"JSearch": 4,
+"Jooble": 20
 }
 }
 }
