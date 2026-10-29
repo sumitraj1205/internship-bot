@@ -20,6 +20,7 @@
 "rs:1587e57ad444b6da",
 "rs:15904b1319a53321",
 "rs:2305c25042abd323",
+"rs:27211a3e7f94d05c",
 "rs:28d371daabfd3904",
 "rs:299eb7d5de3a5675",
 "rs:2a6546647fe8332d",
@@ -33,6 +34,7 @@
 "rs:423cf714e8f4eeb4",
 "rs:454b4ccdd32785bb",
 "rs:46b6812c339690c6",
+"rs:47babe0f8b9daf6f",
 "rs:47cc53f2e49d7cf4",
 "rs:4b1d4bbd367b5815",
 "rs:4da26e159196c42c",
@@ -43,6 +45,7 @@
 "rs:67a7c50780b3c9e0",
 "rs:69d671156d008b59",
 "rs:6a253ff7cdbb48f8",
+"rs:6b2367118b6552be",
 "rs:6c8c90d204d93246",
 "rs:6ec6ff45c9e1b3b5",
 "rs:72315a505695253c",
@@ -51,8 +54,12 @@
 "rs:798409b052218606",
 "rs:7c7c2d66e7e35b52",
 "rs:7d351052613976e0",
+"rs:7e60b5af022993b3",
 "rs:854fc672ea1e65aa",
 "rs:85a32943a975cc2a",
+"rs:85c8260bd200d10e",
+"rs:8739dd7f5983760f",
+"rs:898cf214b814619c",
 "rs:8a3f58db1d6456e3",
 "rs:8b07516cdca7d62b",
 "rs:8b66095631c5940a",
@@ -87,6 +94,7 @@
 "rs:c29b43c6a16142fa",
 "rs:c3a9a004c1016479",
 "rs:c3ebb537ab05b273",
+"rs:c72d8d98d48aa7f3",
 "rs:c75ca3b9d38b90ed",
 "rs:cbd0af95d9c22d82",
 "rs:cc89bf8c50201518",
@@ -103,14 +111,18 @@
 "rs:dcb6747119ce8ff1",
 "rs:dcdcd0b070a6cdae",
 "rs:dd2429eee6d74e8e",
+"rs:de0b9e2a4a4a7c99",
 "rs:dea5739cb139ec7a",
 "rs:e1ad1c59281a96e4",
+"rs:e27d8200c1ea4073",
 "rs:e35d2bd1816331ac",
 "rs:e526d6f6af97964e",
 "rs:ee23bbe1f28de457",
 "rs:ee96c890e28db998",
 "rs:f11e572a865be328",
+"rs:f1afceb1c0b77b32",
 "rs:f492dddfd42cf47f",
+"rs:f7eb2dce9931772c",
 "rs:fd0b0861a9dce6d6",
 "rs:fefa1b2ba201aaf0",
 "wd:nvidia:/job/India-Bengaluru/PhD-Intern--AI-ML-in-Wireless-L1-L2---Fall-2026_JR2024423"
@@ -1363,9 +1375,9 @@
 "watch_ready": true,
 "usage": {
 "2026-10": {
-"Adzuna": 11,
-"JSearch": 5,
-"Jooble": 30
+"Adzuna": 14,
+"JSearch": 6,
+"Jooble": 35
 }
 }
 }
