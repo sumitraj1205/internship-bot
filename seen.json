@@ -3,6 +3,7 @@
 "an:remote-research-engineer-intern-multimodal-llm-united-kindom-376995",
 "az:5935550291",
 "az:5939427947",
+"az:5954488639",
 "gh:cresta:5213417008",
 "gh:upstart:8213476",
 "rl:4053ae0c31c2ef60",
@@ -42,6 +43,7 @@
 "rs:50a405ebfbe67179",
 "rs:536f347415b9c2e7",
 "rs:59f70f268523f40c",
+"rs:610f787398c69538",
 "rs:62199ba2e261cb28",
 "rs:67a7c50780b3c9e0",
 "rs:69d671156d008b59",
@@ -54,6 +56,7 @@
 "rs:786a24ec3d4fe67a",
 "rs:798409b052218606",
 "rs:7c7c2d66e7e35b52",
+"rs:7c92a52263ab62e2",
 "rs:7d351052613976e0",
 "rs:7e60b5af022993b3",
 "rs:854fc672ea1e65aa",
@@ -123,9 +126,11 @@
 "rs:f11e572a865be328",
 "rs:f1afceb1c0b77b32",
 "rs:f492dddfd42cf47f",
+"rs:f6723055cabdb4df",
 "rs:f7eb2dce9931772c",
 "rs:fd0b0861a9dce6d6",
 "rs:fefa1b2ba201aaf0",
+"rs:ffd1e32d096fb4b2",
 "wd:nvidia:/job/India-Bengaluru/PhD-Intern--AI-ML-in-Wireless-L1-L2---Fall-2026_JR2024423"
 ],
 "boards": {
@@ -1375,6 +1380,10 @@
 },
 "watch_ready": true,
 "usage": {
-"2026-11": {}
+"2026-11": {
+"Adzuna": 3,
+"JSearch": 1,
+"Jooble": 5
+}
 }
 }
