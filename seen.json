@@ -22,6 +22,7 @@
 "rs:1587e57ad444b6da",
 "rs:15904b1319a53321",
 "rs:2305c25042abd323",
+"rs:250d9588a303bdfe",
 "rs:27211a3e7f94d05c",
 "rs:28d371daabfd3904",
 "rs:299eb7d5de3a5675",
@@ -1381,9 +1382,9 @@
 "watch_ready": true,
 "usage": {
 "2026-11": {
-"Adzuna": 3,
-"JSearch": 1,
-"Jooble": 5
+"Adzuna": 6,
+"JSearch": 2,
+"Jooble": 10
 }
 }
 }
