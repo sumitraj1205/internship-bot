@@ -56,6 +56,7 @@
 "rs:75e599c6093e95b1",
 "rs:786a24ec3d4fe67a",
 "rs:798409b052218606",
+"rs:7bdfa42eac56408b",
 "rs:7c7c2d66e7e35b52",
 "rs:7c92a52263ab62e2",
 "rs:7d351052613976e0",
@@ -112,6 +113,7 @@
 "rs:d63b72b39cafc426",
 "rs:d6a4a005382177d8",
 "rs:d910bc6629a27f73",
+"rs:d99570342e9fe588",
 "rs:da612d4da9c30e9b",
 "rs:dcb6747119ce8ff1",
 "rs:dcdcd0b070a6cdae",
@@ -1383,9 +1385,9 @@
 "watch_ready": true,
 "usage": {
 "2026-11": {
-"Adzuna": 9,
-"JSearch": 3,
-"Jooble": 15
+"Adzuna": 12,
+"JSearch": 4,
+"Jooble": 20
 }
 }
 }
