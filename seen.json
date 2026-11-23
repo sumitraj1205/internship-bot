@@ -13,6 +13,7 @@
 "rs:061a84cd0d089667",
 "rs:0b5cda3852e62074",
 "rs:0b67ba32894f288c",
+"rs:0b7ed3be24f1c8af",
 "rs:0bf8a6bb8055b60c",
 "rs:1095b66a2dafcf72",
 "rs:11a220d6165530f1",
@@ -36,6 +37,7 @@
 "rs:40c9f78013cc92c6",
 "rs:423cf714e8f4eeb4",
 "rs:454b4ccdd32785bb",
+"rs:45b1ffc15ec032ac",
 "rs:46b6812c339690c6",
 "rs:47babe0f8b9daf6f",
 "rs:47cc53f2e49d7cf4",
@@ -1385,9 +1387,9 @@
 "watch_ready": true,
 "usage": {
 "2026-11": {
-"Adzuna": 12,
-"JSearch": 4,
-"Jooble": 20
+"Adzuna": 15,
+"JSearch": 5,
+"Jooble": 25
 }
 }
 }
